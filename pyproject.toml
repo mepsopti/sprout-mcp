@@ -1,6 +1,6 @@
 [project]
 name = "sprout-mcp"
-version = "0.1.0"
+version = "0.1.1"
 description = "Model-tiered content pipeline MCP server — cheap models seed, expensive models verify"
 requires-python = ">=3.12"
 license = "MIT"
