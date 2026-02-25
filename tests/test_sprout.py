@@ -11,7 +11,7 @@ import pytest_asyncio
 # Override DB path before importing sprout modules
 _tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
 _tmp.close()
-os.environ["SPROUT_TEST_DB"] = _tmp.name
+os.environ["SPROUT_DB_PATH"] = _tmp.name
 
 import sprout.db as db
 

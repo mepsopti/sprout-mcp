@@ -1,6 +1,7 @@
 """SQLite persistence for Sprout."""
 
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -8,7 +9,17 @@ import aiosqlite
 
 from sprout.models import Chunk, Confidence, Provenance, ScheduledTask, TokenUsage
 
-DB_PATH = Path(__file__).parent.parent / "sprout.db"
+def _resolve_db_path() -> Path:
+    env = os.environ.get("SPROUT_DB_PATH")
+    if env:
+        p = Path(env)
+    else:
+        p = Path.home() / ".sprout" / "sprout.db"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+DB_PATH = _resolve_db_path()
 
 _db: aiosqlite.Connection | None = None
 
@@ -71,6 +82,14 @@ async def _init_tables(db: aiosqlite.Connection) -> None:
             estimated_tokens INTEGER NOT NULL,
             recorded_at TEXT NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS retries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chunk_id TEXT NOT NULL,
+            error_message TEXT NOT NULL,
+            recorded_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_retries_chunk ON retries(chunk_id);
     """)
 
 
@@ -307,3 +326,54 @@ async def cancel_scheduled_task(task_id: str) -> bool:
     )
     await db.commit()
     return cursor.rowcount > 0
+
+
+async def get_cost_report(project: str | None = None) -> dict:
+    """Get estimated costs by model using token usage and pricing."""
+    from sprout.router import MODEL_PRICING
+
+    conn = await get_db()
+    if project:
+        query = """
+            SELECT tu.model, SUM(tu.estimated_tokens) as total_tokens, COUNT(*) as count
+            FROM token_usage tu
+            JOIN chunks c ON tu.chunk_id = c.id
+            WHERE c.project = ?
+            GROUP BY tu.model
+        """
+        params = [project]
+    else:
+        query = """
+            SELECT model, SUM(estimated_tokens) as total_tokens, COUNT(*) as count
+            FROM token_usage GROUP BY model
+        """
+        params = []
+
+    async with conn.execute(query, params) as cursor:
+        result = {}
+        for row in await cursor.fetchall():
+            model = row["model"]
+            tokens = row["total_tokens"]
+            price_per_m = MODEL_PRICING.get(model, 0.0)
+            result[model] = {
+                "total_tokens": tokens,
+                "count": row["count"],
+                "estimated_cost": (tokens / 1_000_000) * price_per_m,
+            }
+    return result
+
+
+async def record_retry(chunk_id: str, error_message: str) -> int:
+    """Record a retry attempt. Returns total retry count for this chunk."""
+    conn = await get_db()
+    now = datetime.now(timezone.utc).isoformat()
+    await conn.execute(
+        "INSERT INTO retries (chunk_id, error_message, recorded_at) VALUES (?, ?, ?)",
+        (chunk_id, error_message, now),
+    )
+    await conn.commit()
+    async with conn.execute(
+        "SELECT COUNT(*) as cnt FROM retries WHERE chunk_id = ?", (chunk_id,)
+    ) as cursor:
+        row = await cursor.fetchone()
+    return row["cnt"]

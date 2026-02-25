@@ -5,9 +5,6 @@ import json
 import logging
 import sys
 from datetime import datetime, timezone
-from pathlib import Path
-
-import aiosqlite
 
 logging.basicConfig(
     level=logging.INFO,
@@ -15,7 +12,6 @@ logging.basicConfig(
 )
 log = logging.getLogger("sprout.scheduler")
 
-DB_PATH = Path(__file__).parent.parent / "sprout.db"
 CHECK_INTERVAL = 60  # seconds
 
 

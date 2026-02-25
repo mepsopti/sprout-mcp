@@ -10,7 +10,13 @@ from fastmcp import FastMCP
 
 from sprout import db
 from sprout.models import Chunk, Confidence, Provenance, ScheduledTask
-from sprout.router import confidence_for_model, recommend_model as _recommend_model
+from sprout.router import (
+    confidence_for_model,
+    recommend_model as _recommend_model,
+    get_routing_table,
+    add_route,
+    MODEL_PRICING,
+)
 from sprout.scheduler import run_scheduler_loop
 
 _scheduler_task: asyncio.Task | None = None
@@ -281,5 +287,88 @@ async def cancel_scheduled(task_id: str) -> str:
 
     ok = await db.cancel_scheduled_task(match.id)
     return f"Cancelled task {match.id[:8]} ({match.task_name})" if ok else "Failed to cancel."
+
+
+@mcp.tool()
+async def configure_routing(
+    task_type: str,
+    tier: str,
+    reason: str,
+) -> str:
+    """Add or update a routing rule for a task type.
+
+    Args:
+        task_type: Task type name (e.g. "code_review", "summarization")
+        tier: Model tier — haiku, sonnet, or opus
+        reason: Why this tier is appropriate
+    """
+    valid_tiers = {"haiku", "sonnet", "opus"}
+    if tier not in valid_tiers:
+        return f"Invalid tier. Must be one of: {valid_tiers}"
+    add_route(task_type, tier, reason)
+    return f"Route added: {task_type} → {tier} ({reason})"
+
+
+@mcp.tool()
+async def get_cost_report(project: str | None = None) -> str:
+    """Get estimated cost report by model and project.
+
+    Args:
+        project: Optional project filter
+    """
+    report = await db.get_cost_report(project)
+    if not report:
+        return "No token usage recorded yet."
+
+    lines = ["## Cost Report\n"]
+    total_cost = 0.0
+    for model, info in sorted(report.items()):
+        cost = info["estimated_cost"]
+        total_cost += cost
+        lines.append(
+            f"- **{model}**: ~{info['total_tokens']:,} tokens "
+            f"({info['count']} chunks) — ${cost:.4f}"
+        )
+    lines.append(f"\n**Total estimated cost: ${total_cost:.4f}**")
+    return "\n".join(lines)
+
+
+@mcp.tool()
+async def retry_on_error(
+    chunk_id: str,
+    error_message: str,
+) -> str:
+    """Record a failed attempt for a chunk and get retry guidance.
+
+    Call this when a model call fails (e.g. 500 error). Sprout tracks
+    retry count and tells you whether to retry or escalate.
+
+    Args:
+        chunk_id: The chunk ID that failed
+        error_message: The error message from the failed attempt
+    """
+    import os
+    max_retries = int(os.environ.get("SPROUT_MAX_RETRIES", "3"))
+    backoff = float(os.environ.get("SPROUT_RETRY_BACKOFF", "2.0"))
+
+    count = await db.record_retry(chunk_id, error_message)
+
+    if count >= max_retries:
+        return (
+            f"Chunk {chunk_id[:8]} has failed {count} times. "
+            f"**Stop retrying.** Last error: {error_message}\n"
+            f"Consider: use a different model, simplify the input, or skip this chunk."
+        )
+
+    wait = backoff ** count
+    return (
+        f"Retry {count}/{max_retries} for chunk {chunk_id[:8]}. "
+        f"Wait ~{wait:.0f}s before retrying. Error: {error_message}"
+    )
+
+
+def main():
+    """Entry point for `sprout-mcp` CLI and `uvx sprout-mcp`."""
+    mcp.run()
 
 
