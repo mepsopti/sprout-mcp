@@ -1,0 +1,21 @@
+startCommand:
+  type: stdio
+  configSchema:
+    type: object
+    properties:
+      SPROUT_DB_PATH:
+        type: string
+        description: "Path to SQLite database (default: ~/.sprout/sprout.db)"
+      SPROUT_CONFIG:
+        type: string
+        description: "Path to JSON config file for custom routes and pricing"
+    required: []
+  commandFunction: |-
+    (config) => ({
+      command: "uvx",
+      args: ["sprout-mcp"],
+      env: {
+        ...(config.SPROUT_DB_PATH ? { SPROUT_DB_PATH: config.SPROUT_DB_PATH } : {}),
+        ...(config.SPROUT_CONFIG ? { SPROUT_CONFIG: config.SPROUT_CONFIG } : {})
+      }
+    })

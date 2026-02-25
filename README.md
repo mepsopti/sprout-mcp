@@ -138,3 +138,5 @@ If Sprout saves you money on your AI bill, consider buying me a coffee:
 ## License
 
 MIT
+
+<!-- mcp-name: io.github.mepsopti/sprout-mcp -->
