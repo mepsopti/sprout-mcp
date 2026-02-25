@@ -1,10 +1,11 @@
 [project]
 name = "sprout-mcp"
-version = "0.1.1"
+version = "0.1.4"
 description = "Model-tiered content pipeline MCP server — cheap models seed, expensive models verify"
 requires-python = ">=3.12"
 license = "MIT"
 authors = [{ name = "Eric Browy" }]
+readme = "README.md"
 keywords = ["mcp", "llm", "model-routing", "cost-optimization", "ai-pipeline"]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -27,6 +28,7 @@ dev = ["pytest", "pytest-asyncio"]
 Homepage = "https://github.com/mepsopti/sprout-mcp"
 Repository = "https://github.com/mepsopti/sprout-mcp"
 Issues = "https://github.com/mepsopti/sprout-mcp/issues"
+Funding = "https://buymeacoffee.com/mepsopti"
 
 [project.scripts]
 sprout-mcp = "sprout.server:main"
